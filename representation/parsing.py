@@ -10,7 +10,6 @@ class TokenType(Enum):
     OR = '∨'
     NOT = '¬'
     IMPLICATION = '→'
-    BIIMPLICATION = '↔'
     PROP_LETTER = 'PROP_LETTER'
 
     def get_index(self) -> int:
@@ -20,7 +19,6 @@ class TokenType(Enum):
             TokenType.AND: 2,
             TokenType.OR: 1,
             TokenType.IMPLICATION: 0,
-            TokenType.BIIMPLICATION: 0
         }
         return precedence.get(self, -1)
 
@@ -30,8 +28,8 @@ type Token = tuple[TokenType, str]
 
 def to_compact_notation(formula: str) -> str:
     """
-    Converts a formula with ASCII-style operators (!, &, |, ->, <->)
-    to a formula with compact Unicode operators (¬, ∧, ∨, →, ↔).
+    Converts a formula with ASCII-style operators (!, &, |, ->)
+    to a formula with compact Unicode operators (¬, ∧, ∨, →).
 
     Args:
         formula (str): The formula using ASCII-style operators.
@@ -39,11 +37,7 @@ def to_compact_notation(formula: str) -> str:
     Returns:
         str: The formula using compact Unicode operators.
     """
-    # Replace multi-character operators first
-    formula = formula.replace("<->", "↔")
     formula = formula.replace("->", "→")
-
-    # Replace single-character operators
     formula = formula.replace("!", "¬")
     formula = formula.replace("&", "∧")
     formula = formula.replace("|", "∨")
@@ -94,9 +88,6 @@ def parse_formula(f: str) -> AST:
             case TokenType.IMPLICATION:
                 r, l = operands.pop(), operands.pop()
                 return AST.Implication(l, r)
-            case TokenType.BIIMPLICATION:
-                r, l = operands.pop(), operands.pop()
-                return AST.BiImplication(l, r)
             case _:
                 raise ValueError(f"Invalid operator type: {op_type}")
 
