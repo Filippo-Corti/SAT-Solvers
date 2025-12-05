@@ -3,14 +3,14 @@ from representation import ast, PropFormula
 
 def to_NNF(f: PropFormula) -> PropFormula:
     """
-    Converts the given propositional formula into Negation Normal Form (NNF).
+    Converts the given IFNF propositional formula into Negation Normal Form (NNF).
 
     This requires 3 transformations:
     - !!A = A
     - !(A | B) = !A & !B
     - !(A & B) = !A | !B
 
-    :param f: Propositional formula
+    :param f: A propositional formula in IFNF
     :return: an equivalent NNF formula
     """
 

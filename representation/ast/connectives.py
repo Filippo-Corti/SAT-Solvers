@@ -1,5 +1,6 @@
 from .prop_ast import UnaryOp, ASTNode, BinaryOp
 
+
 class Not(UnaryOp):
     """A NOT operator node in the AST."""
 

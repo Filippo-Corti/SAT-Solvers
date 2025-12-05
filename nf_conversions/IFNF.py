@@ -7,7 +7,7 @@ def to_IFNF(f: PropFormula) -> PropFormula:
 
     This can simply be achieved by transforming A -> B into !A | B.
 
-    :param f: Propositional formula
+    :param f: A propositional formula
     :return: an equivalent IFNF formula
     """
 
