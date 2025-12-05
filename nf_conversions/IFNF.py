@@ -1,14 +1,28 @@
-from representation import AST
+from representation import ast, PropFormula
 
 
-def to_IFNF(f: AST.ASTNode) -> AST.ASTNode:
+def to_IFNF(f: PropFormula) -> PropFormula:
     """
-    Converts the given AST to Implication Free Normal Form (IFNF).
+    Converts the given propositional formula into Implication Free Normal Form (IFNF).
 
-    This can simply be achieved by transforming A -> B into !A | B
+    This can simply be achieved by transforming A -> B into !A | B.
+
+    :param f: Propositional formula
+    :return: an equivalent IFNF formula
     """
-    f.children = [to_IFNF(child) for child in f.children]
-    if isinstance(f, AST.Implication):
-        a, b = f.children
-        return AST.Or(AST.Not(a), b)
-    return f
+
+    def transform(node: ast.ASTNode) -> ast.ASTNode:
+        if isinstance(node, ast.Implication): # A -> B = !A | B
+            left_new = transform(node.left)
+            right_new = transform(node.right)
+            return ast.Or(ast.Not(left_new), right_new)
+
+        new_children = tuple(transform(c) for c in node.children)
+        return type(node)(*new_children, label=node.label)  # Same node, new children
+
+    new_root = transform(f.root)
+    return PropFormula(
+        root=new_root,
+        id_to_label=f.id_to_label,
+        next_free_letter=f.next_free_letter
+    )
