@@ -1,7 +1,7 @@
 import re
 
-from .ast import ASTNode
-from .token import Token, TokenType
+from representation.ast import ASTNode
+from representation.token import Token, TokenType
 from .parser import parse
 
 

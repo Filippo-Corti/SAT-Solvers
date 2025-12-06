@@ -1,5 +1,5 @@
-from .ast import *
-from .token import Token, TokenType
+from representation.ast import *
+from representation.token import Token, TokenType
 
 
 def parse(tokens: list[Token]) -> ASTNode:
