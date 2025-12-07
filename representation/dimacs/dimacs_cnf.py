@@ -71,5 +71,8 @@ class DimacsCNF:
     def __iter__(self):
         return iter(self.clauses)
 
+    def __getitem__(self, index: int) -> Clause:
+        return self.clauses[index]
+
     def __str__(self):
         return ", ".join(f"{clause}" for clause in self.clauses)
