@@ -1,7 +1,7 @@
-from representation import ast, PropFormula
+from representation import ast
 
 
-def to_equisat_CNF(f: PropFormula) -> PropFormula:
+def to_equisat_CNF(f: ast.PropFormula) -> ast.PropFormula:
     """
     Converts the given NNF propositional formula into an equisatisfiable Conjunctive Normal Form (CNF).
 
@@ -47,7 +47,7 @@ def to_equisat_CNF(f: PropFormula) -> PropFormula:
     new_root = transform(f.root)
     if tail is not None:
         new_root = ast.And(new_root, tail)
-    return PropFormula(
+    return ast.PropFormula(
         root=new_root,
         id_to_label=id_to_label,
         next_free_letter=next_free_letter

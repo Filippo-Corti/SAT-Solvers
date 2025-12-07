@@ -1,7 +1,7 @@
-from representation.ast.prop_formula import PropFormula
 from .ast import *
+from .dimacs import *
 
 __all__ = [
-    "PropFormula",
     "ast",
+    "dimacs",
 ]

@@ -1,7 +1,7 @@
-from representation import ast, PropFormula
+from representation import ast
 
 
-def to_NNF(f: PropFormula) -> PropFormula:
+def to_NNF(f: ast.PropFormula) -> ast.PropFormula:
     """
     Converts the given IFNF propositional formula into Negation Normal Form (NNF).
 
@@ -28,7 +28,7 @@ def to_NNF(f: PropFormula) -> PropFormula:
         return type(node)(*new_children, label=node.label)  # Same node, new children
 
     new_root = transform(f.root)
-    return PropFormula(
+    return ast.PropFormula(
         root=new_root,
         id_to_label=f.id_to_label,
         next_free_letter=f.next_free_letter

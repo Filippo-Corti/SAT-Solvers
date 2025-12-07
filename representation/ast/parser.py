@@ -1,4 +1,6 @@
-from representation.ast import *
+from .prop_formula import ASTNode
+from .prop_letter import PropLetter
+from .connectives import Not, And, Or, Implication
 from representation.token import Token, TokenType
 
 

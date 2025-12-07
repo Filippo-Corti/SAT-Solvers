@@ -1,4 +1,4 @@
-from representation import PropFormula, ast
+from representation import ast
 from .clause import Clause
 
 
@@ -22,7 +22,12 @@ class DimacsCNF:
         self.v_clauses = len(clauses)
 
     @staticmethod
-    def from_ast(f: PropFormula) -> "DimacsCNF":
+    def from_file(path: str) -> "DimacsCNF":
+        from .parser import parse
+        return parse(path)
+
+    @staticmethod
+    def from_ast(f: ast.PropFormula) -> "DimacsCNF":
         """
         Converts a propositional formula represented as an AST into a DIMACS CNF representation.
 
@@ -62,6 +67,9 @@ class DimacsCNF:
             clauses=clauses,
             n_vars=f.next_free_letter - 1
         )
+
+    def __iter__(self):
+        return iter(self.clauses)
 
     def __str__(self):
         return ", ".join(f"{clause}" for clause in self.clauses)

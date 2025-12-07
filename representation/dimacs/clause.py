@@ -2,9 +2,9 @@ class Clause:
     """
     A clause in a CNF
     """
-    literals: list[list[int]]
+    literals: list[int]
 
-    def __init__(self, literals: list[list[int]]) -> None:
+    def __init__(self, literals: list[int]) -> None:
         self.literals = literals
 
     def __iter__(self):

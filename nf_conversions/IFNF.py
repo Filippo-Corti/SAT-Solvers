@@ -1,7 +1,7 @@
-from representation import ast, PropFormula
+from representation import ast
 
 
-def to_IFNF(f: PropFormula) -> PropFormula:
+def to_IFNF(f: ast.PropFormula) -> ast.PropFormula:
     """
     Converts the given propositional formula into Implication Free Normal Form (IFNF).
 
@@ -21,7 +21,7 @@ def to_IFNF(f: PropFormula) -> PropFormula:
         return type(node)(*new_children, label=node.label)  # Same node, new children
 
     new_root = transform(f.root)
-    return PropFormula(
+    return ast.PropFormula(
         root=new_root,
         id_to_label=f.id_to_label,
         next_free_letter=f.next_free_letter
