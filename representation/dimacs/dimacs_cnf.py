@@ -36,33 +36,32 @@ class DimacsCNF:
         :param f: the AST propositional formula
         :return: the same formula, in DIMACS CNF format
         """
-        clauses = list()
-        current_clause = list()
 
-        def traverse(node: ast.ASTNode, in_or: bool):
-            nonlocal current_clause
+        def extract_clause(node):
+            if isinstance(node, ast.Or):
+                literals = []
+                for c in node.children:
+                    literals.extend(extract_clause(c))
+                return literals
 
             if isinstance(node, ast.PropLetter):
-                current_clause.append(int(node.label))
-                return
+                return [int(node.label)]
 
             if isinstance(node, ast.Not):
-                current_clause.append(-int(node.child.label))
-                return
+                return [-int(node.child.label)]
 
-            if isinstance(node, ast.Or):
-                if not in_or:
-                    if current_clause:
-                        clauses.append(Clause(current_clause))
-                        current_clause = list()
-                    in_or = True
+            raise ValueError(f"The AST does not appear to be in CNF")
 
-            for child in node.children:
-                traverse(child, in_or)
+        def extract_cnf(node):
+            if isinstance(node, ast.And):
+                clauses = list()
+                for c in node.children:
+                    clauses.extend(extract_cnf(c))
+                return clauses
 
-        traverse(f.root, False)
-        if current_clause:
-            clauses.append(Clause(current_clause))
+            return [extract_clause(node)]  # Single clause
+
+        clauses = [Clause(c) for c in extract_cnf(f.root)]
         return DimacsCNF(
             clauses=clauses,
             n_vars=f.next_free_letter - 1

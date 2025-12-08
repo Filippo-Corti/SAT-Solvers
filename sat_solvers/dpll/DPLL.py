@@ -4,7 +4,7 @@ from representation import dimacs
 from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF
 
 # [prop. letter , assigned value, level at which the decision was taken]
-PropLetterAssignment = tuple[int, bool, int]
+type PropLetterAssignment = tuple[int, bool, int]
 
 
 class DPLL:
@@ -64,7 +64,7 @@ class DPLL:
         while self.propagation_queue:
             literal = self.propagation_queue.popleft()
             current_tv = self.v[literal]
-            if current_tv == False: return False # Conflict
+            if current_tv == False: return False  # Conflict
             if current_tv: continue
             self.assign(abs(literal), literal >= 0)
             for clause_idx in self.watchlist[-literal].copy():
