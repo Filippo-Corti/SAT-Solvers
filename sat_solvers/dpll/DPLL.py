@@ -1,10 +1,7 @@
 from collections import defaultdict, deque
 
 from representation import dimacs
-from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF
-
-# [prop. letter , assigned value, level at which the decision was taken]
-type PropLetterAssignment = tuple[int, bool, int]
+from ..utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal
 
 
 class DPLL:
@@ -17,10 +14,10 @@ class DPLL:
     cnf: TrackedCNF
     v: PartialTruthAssignment
     assigned_count: int
-    assignments_stack: list[PropLetterAssignment]
+    assignments_stack: list[tuple[Literal, int]]
     watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
     current_level: int
-    propagation_queue: deque[int]  # List of literals to propagate on
+    propagation_queue: deque[Literal]  # List of literals to propagate on
 
     def __init__(self, cnf: dimacs.DimacsCNF):
         self.v = PartialTruthAssignment(cnf.n_vars)
@@ -44,11 +41,11 @@ class DPLL:
         """
         Performs the DPLL procedure on self.cnf.
 
-        :return: True if a satisfying assignment was found.
+        :return: True if a satisfying assignment was found. False otherwise.
         """
         state = self.propagate()
         if not state:
-            return False  # dead-end
+            return False  # Dead-end
         if self.assigned_count == self.cnf.n_vars:
             return True  # Complete assignment (after propagation, which guarantees that the assignment works)
 
@@ -66,8 +63,8 @@ class DPLL:
             current_tv = self.v[literal]
             if current_tv == False: return False  # Conflict
             if current_tv: continue
-            self.assign(abs(literal), literal >= 0)
-            for clause_idx in self.watchlist[-literal].copy():
+            self.assign(literal, True)
+            for clause_idx in list(self.watchlist[-literal]):
                 clause = self.cnf[clause_idx]
                 verified = clause.check(self.v)
                 if verified: continue
@@ -112,22 +109,21 @@ class DPLL:
             target_level = self.current_level - 1
 
         # Backtrack on the assignments stack
-        while self.assignments_stack and self.assignments_stack[-1][2] > target_level:
+        while self.assignments_stack and self.assignments_stack[-1][1] > target_level:
             head = self.assignments_stack.pop()
             self.unassign(head[0])
 
         self.current_level = target_level
         self.propagation_queue.clear()
 
-    def assign(self, prop_letter: int, tv: bool) -> bool:
-        assert prop_letter > 0
-        self.v[prop_letter] = tv
-        self.assignments_stack.append((prop_letter, tv, self.current_level))
+    def assign(self, literal: Literal, tv: bool) -> bool:
+        self.v[literal] = tv
+        self.assignments_stack.append((literal, self.current_level))
         self.assigned_count += 1
         return True
 
-    def unassign(self, prop_letter: int):
-        self.v[prop_letter] = None
+    def unassign(self, literal: Literal):
+        self.v[literal] = None
         self.assigned_count -= 1
 
     def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF):
@@ -155,7 +151,7 @@ class DPLL:
             self.watchlist[w1].add(idx)
             self.watchlist[w2].add(idx)
 
-    def choose_splitting_literal(self) -> int:
+    def choose_splitting_literal(self) -> Literal:
         """
         Heuristic that chooses the next literal to split on.
 
@@ -165,7 +161,7 @@ class DPLL:
         :return: the next literal to split on (that is, the propositional letter and how to set it)
         """
         max_v = 0
-        max_literal = None
+        max_literal: Literal | None = None
         for i in range(self.cnf.n_vars):
             letter = i + 1
             if self.v[letter] is not None: continue

@@ -3,20 +3,22 @@ from typing import Iterator
 from representation import dimacs
 
 
+type Literal = int
+
 class PartialTruthAssignment:
     """
     A partial truth assigment.
 
     Valid values are True, False and Unassigned (None).
     """
-    d: dict[int, bool | None]
+    d: dict[int, int | None]
     n_keys: int
 
     def __init__(self, n_vars: int):
         self.d = {v + 1: None for v in range(n_vars)}
         self.n_keys = n_vars
 
-    def __getitem__(self, i: int) -> bool | None:
+    def __getitem__(self, i: Literal) -> bool | None:
         if i >= 0:
             return self.d[i]
 
@@ -25,10 +27,11 @@ class PartialTruthAssignment:
             return None
         return not v
 
-    def __setitem__(self, i: int, v: bool | None):
-        assert i >= 0, "Only positive integers are allowed as propositional letters"
-        # TODO: simplify
-        self.d[i] = v
+    def __setitem__(self, i: Literal, v: bool | None):
+        if i >= 0:
+            self.d[i] = v
+        else:
+            self.d[abs(i)] = None if v is None else not v
 
     def __str__(self):
         return str(self.d)
@@ -44,10 +47,12 @@ class TrackedClause(dimacs.Clause):
     """
     A DIMACS Clause with the additional attributes required for SAT solving a CNF
     """
-    watched: tuple[int, int]
+    watched: tuple[Literal, Literal]
 
-    def __init__(self, literals: list[int], true_literals: list[int]) -> None:
-        """Creates a tracked clause, determining the watched literals based on the assignment v"""
+    def __init__(self, literals: list[Literal], true_literals: list[Literal]) -> None:
+        """
+        Creates a tracked clause, determining the watched literals based on the assignment v.
+        """
         super().__init__(literals)
         assert len(literals) >= 2
         watchable = list()
@@ -88,11 +93,12 @@ class TrackedClause(dimacs.Clause):
         for literal in self.literals:
             if literal in self.watched or v[literal] == False:
                 continue
-            if v[self.watched[0]] == False:
-                self.watched = (literal, self.watched[1])
+            w1, w2 = self.watched
+            if v[w1] == False:
+                self.watched = (literal, w2)
                 return literal
-            elif v[self.watched[1]] == False:
-                self.watched = (self.watched[0], literal)
+            elif v[w2] == False:
+                self.watched = (w1, literal)
                 return literal
         return None
 
