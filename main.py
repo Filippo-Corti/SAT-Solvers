@@ -1,6 +1,6 @@
 from nf_conversions import to_IFNF, to_NNF, to_equisat_CNF
 from representation import ast, dimacs
-from sat_solvers import dpll
+from sat_solvers import DPLL, CDCL
 
 #s = "(x1 ∨ x2 ∨ ¬x3) ∧ (¬x2 ∨ x3)"
 #s = "(!p | q | r) & (p | !q | !r) & (q | r) & (q | !r) & (!p | !q | !r)"
@@ -20,16 +20,20 @@ from sat_solvers import dpll
 # cnf = dimacs.DimacsCNF.from_ast(f4)
 
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
-cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-100-1_6-yes1-3.cnf")
-#cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-100-2_0-no-1.cnf")
+cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-200-1_6-no-2.cnf")
+#cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-100-1_6-no-2.cnf") # The condition count == 1 is still false when we find a decision node
+#cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-200-6_0-yes1-3.cnf") # KeyError on self.levels[abs(literal)]
 #cnf = dimacs.DimacsCNF.from_file("examples/008.txt")
 
 print(f"Dimacs CNF:\t{cnf}")
 
-dpll = dpll.DPLL(cnf)
-found = dpll.solve()
+cdcl = CDCL(cnf)
+found = cdcl.solve()
 if found:
-    print(f"CNF is SAT: {dpll.v}")
-    print(dpll.cnf.check(dpll.v))
+    print(f"CNF is SAT: {cdcl.v}")
+    print(cdcl.cnf.check(cdcl.v))
+    for clause in cdcl.cnf:
+        if not clause.check(cdcl.v):
+            print(f"THIS IS NOT VALIDATED: {clause}")
 else:
     print("CNF is UNSAT")

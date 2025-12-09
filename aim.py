@@ -1,6 +1,6 @@
 import os
 from representation import dimacs
-from sat_solvers.dpll import DPLL
+from sat_solvers import DPLL, CDCL
 
 AIM_DIR = "examples/aim"
 
@@ -33,7 +33,7 @@ def run_all_aim():
         cnf = dimacs.DimacsCNF.from_file(full_path)
 
         # run solver
-        solver = DPLL(cnf)
+        solver = CDCL(cnf)
         found = solver.solve()
 
         # report
@@ -46,6 +46,8 @@ def run_all_aim():
         print(f"→ Solver says:   {status}")
         print(f"→ Expected:      {expected_status}")
         print(f"→ Correct?       {correct}")
+        if status == "SAT":
+            print(f"→ Assignment?    {solver.cnf.check(solver.v)}")
 
     # summary
     print("\n=== SUMMARY ===")

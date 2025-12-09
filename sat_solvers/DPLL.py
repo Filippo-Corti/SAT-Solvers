@@ -1,12 +1,12 @@
 from collections import defaultdict, deque
 
 from representation import dimacs
-from ..utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal
+from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal
 
 
 class DPLL:
     """
-    A class that performs the Davis-Putnam-Logemann-Loveland (DPLL) algorithm.
+    A class that performs the Davis-Putnam-Logemann-Loveland (DPLL) SAT algorithm.
 
     The algorithm tries to find a truth assignment that validates a CNF, in order to determine
     whether the CNF is or is not satisfiable.
@@ -14,7 +14,7 @@ class DPLL:
     cnf: TrackedCNF
     v: PartialTruthAssignment
     assigned_count: int
-    assignments_stack: list[tuple[Literal, int]]
+    assignments_stack: list[tuple[Literal, int]] # [literal, level at which it was assigned]
     watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
     current_level: int
     propagation_queue: deque[Literal]  # List of literals to propagate on
@@ -69,13 +69,14 @@ class DPLL:
                 verified = clause.check(self.v)
                 if verified: continue
                 if verified == False: return False
-                new_literal = clause.update_watched(self.v)
-                if new_literal is None:  # 2-Watched are [False, None]
+                new_literals = clause.update_watched(self.v)
+                if new_literals is None:  # 2-Watched are [False, None]
                     none_literal = clause.watched[0] if self.v[clause.watched[0]] is None else clause.watched[1]
                     self.propagation_queue.append(none_literal)
                 else:
+                    # In DPLL, we can always assume that we will not have to change more than one watched at a time
                     self.watchlist[-literal].remove(clause_idx)
-                    self.watchlist[new_literal].add(clause_idx)
+                    self.watchlist[new_literals[0]].add(clause_idx)
         return True
 
     def split(self) -> bool:
@@ -85,35 +86,30 @@ class DPLL:
         :return: True if a satisfying assignment was found.
         """
         splitting_literal = self.choose_splitting_literal()
-        base_level = self.current_level
 
-        self.current_level = base_level + 1
+        self.current_level += 1
         self.propagation_queue.append(splitting_literal)
         if self.solve():
             return True
-        self.backtrack(base_level)
+        self.backtrack()
 
-        self.current_level = base_level + 1
+        self.current_level += 1
         self.propagation_queue.append(-splitting_literal)
         if self.solve():
             return True
-        self.backtrack(base_level)
+        self.backtrack()
 
         return False
 
-    def backtrack(self, target_level: int | None = None):
+    def backtrack(self):
         """
         Jumps back from all the considerations and assignments made while exploring the dead-ending branch.
         """
-        if target_level is None:
-            target_level = self.current_level - 1
-
-        # Backtrack on the assignments stack
-        while self.assignments_stack and self.assignments_stack[-1][1] > target_level:
+        self.current_level -= 1
+        while self.assignments_stack and self.assignments_stack[-1][1] > self.current_level:
             head = self.assignments_stack.pop()
             self.unassign(head[0])
 
-        self.current_level = target_level
         self.propagation_queue.clear()
 
     def assign(self, literal: Literal, tv: bool) -> bool:
