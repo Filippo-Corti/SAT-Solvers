@@ -70,7 +70,7 @@ class DPLL:
                 if verified: continue
                 if verified == False: return False
                 new_literals = clause.update_watched(self.v)
-                if new_literals is None:  # 2-Watched are [False, None]
+                if not new_literals:  # 2-Watched are [False, None]
                     none_literal = clause.watched[0] if self.v[clause.watched[0]] is None else clause.watched[1]
                     self.propagation_queue.append(none_literal)
                 else:

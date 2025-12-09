@@ -82,21 +82,25 @@ class TrackedClause(dimacs.Clause):
             return False
         return None
 
-    def update_watched(self, v: PartialTruthAssignment):
+    def update_watched(self, v: PartialTruthAssignment) -> list[Literal]:
         """
         It looks for new literals to watch.
 
         :param v: The current partial assignment
+        :return: The new watched literals
         """
+        literals = list()
         for literal in self.literals:
             if literal in self.watched or v[literal] == False:
                 continue
             w1, w2 = self.watched
             if v[w1] == False:
                 self.watched = (literal, w2)
+                literals.append(literal)
             elif v[w2] == False:
                 self.watched = (w1, literal)
-
+                literals.append(literal)
+        return literals
 
 class TrackedCNF(dimacs.DimacsCNF):
     """
