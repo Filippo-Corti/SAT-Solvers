@@ -32,8 +32,5 @@ found = cdcl.solve()
 if found:
     print(f"CNF is SAT: {cdcl.v}")
     print(cdcl.cnf.check(cdcl.v))
-    for clause in cdcl.cnf:
-        if not clause.check(cdcl.v):
-            print(f"THIS IS NOT VALIDATED: {clause}")
 else:
     print("CNF is UNSAT")

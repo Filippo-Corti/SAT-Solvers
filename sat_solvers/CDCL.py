@@ -14,9 +14,9 @@ class CDCL:
     cnf: TrackedCNF
     v: PartialTruthAssignment
     assigned_count: int
+    current_level: int
     assignments_stack: list[tuple[Literal, int, int]]  # [literal, level at which it was assigned, reason clause index]
     watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
-    current_level: int
     propagation_queue: deque[tuple[Literal, int]]  # List of [literal, reason clause index] to propagate on
     levels: dict[int, int | None]  # [propositional letter, level at which it was assigned a truth value]
 
@@ -28,10 +28,11 @@ class CDCL:
         self.assignments_stack = list()
         self.levels = dict()
 
-        self.handle_one_literal_clauses(cnf)
+        ok = self.handle_one_literal_clauses(cnf)
+        assert ok, "A conflict was found just by looking at one-literal clauses"            
         self.cnf = TrackedCNF(
             clauses=[
-                TrackedClause(literals=clause.literals, true_literals=[l for l, i in list(self.propagation_queue)])
+                TrackedClause(literals=clause.literals, true_literals=[l for l, _ in list(self.propagation_queue)])
                 for clause in cnf
                 if len(clause) >= 2
             ],
@@ -77,7 +78,7 @@ class CDCL:
         """
         while self.propagation_queue:
             literal, reason_clause_idx = self.propagation_queue.popleft()
-            current_tv = self.v[literal]
+            current_tv : bool | None = self.v[literal]
             if current_tv == False: return reason_clause_idx  # Conflict
             if current_tv: continue
             self.assign(literal, True, reason_clause_idx)
@@ -121,8 +122,6 @@ class CDCL:
         :param conflict_level: the level at which the conflict happened.
         :return: the learnt clause (as a set of literals) and the literal on which propagation should happen.
         """
-        clause = set(self.cnf[conflict_clause_idx])
-        #print(conflict_clause_idx, self.cnf[conflict_clause_idx].watched)
 
         def count_literals_at_conflict_level(c: set[Literal]) -> tuple[int, Literal]:
             """Counts the number of literals at conflict level and also returns one of them"""
@@ -130,40 +129,29 @@ class CDCL:
             count = 0
             for literal in c:
                 level = self.levels[abs(literal)]
-                #if level is None:
-                    #print("ACTUALLY IT HAS ALWAYS HAPPENED LOL")
                 if level == conflict_level:
                     count += 1
                     l = literal
-            assert l is not None
+            assert l is not None, "There should be at least one literal at conflict level in the clause"
             return count, l
 
+        clause = set(self.cnf[conflict_clause_idx])
         idx_on_stack = len(self.assignments_stack) - 1
         while idx_on_stack >= 0:
-            #print(f"My conflict clause being resolved is currently {clause} (idx={idx_on_stack}).")
             count, literal = count_literals_at_conflict_level(clause)
-            #print(f"And the count of literals was {count}")
             if count == 1:
-                #print(f"Count was 1 so we return the learnt clause {clause} and the literal {literal}")
                 return clause, literal
 
             assigned_literal, assignment_level, reason_clause_idx = self.assignments_stack[idx_on_stack]
-            if assignment_level != conflict_level:
-                #print(f"I should never get this far with count {count}, {assignment_level} != {conflict_level}")
-                idx_on_stack -= 1
-                continue
-
-            if -assigned_literal in clause:
+            if assignment_level == conflict_level and -assigned_literal in clause:
                 reason_clause = set(self.cnf[reason_clause_idx])
-                #if assigned_literal not in reason_clause:
-                    #print(f"There is a clause {reason_clause} ({reason_clause_idx}) that was supposedly the reason why we assigned {assigned_literal}")
                 if assigned_literal in reason_clause:
                     clause.remove(-assigned_literal)
                     reason_clause.remove(assigned_literal)
                     clause.update(reason_clause)
             idx_on_stack -= 1
 
-        raise ValueError("Stack was emptied during conflict clause learning")
+        assert False, "We should never reach the end of the stack without finding the First-UIP"
 
     def get_second_highest_level(self, clause: set[Literal]) -> int:
         """
@@ -172,8 +160,7 @@ class CDCL:
         l1, l2 = 0, 0
         for literal in clause:
             level = self.levels[abs(literal)]
-            #if level is None:
-                #print(f"There is a none literal {literal} in the clause {clause}")
+            assert level is not None, "All literals in the clause built through resolution should be assigned"
             if level > l1:
                 l2 = l1
                 l1 = level
@@ -196,52 +183,47 @@ class CDCL:
         w1, w2 = tracked_clause.watched
         self.watchlist[w1].add(idx)
         self.watchlist[w2].add(idx)
-        #print(f"New learnt clause added: {tracked_clause}. It is watching {w1} and {w2}")
         return idx
 
     def backjump(self, target_level: int):
         """
         Jumps back from all the considerations and assignments made at any level below target_level.
         """
-        # Backtrack on the assignments stack
         while self.assignments_stack and self.assignments_stack[-1][1] > target_level:
             head = self.assignments_stack.pop()
             self.unassign(head[0])
 
-        #print(f"BACKJUMPING TO LEVEL {target_level}")
         self.current_level = target_level
         self.propagation_queue.clear()
 
-    def assign(self, literal: Literal, tv: bool, reason_clause_idx: int = -1) -> bool:
+    def assign(self, literal: Literal, tv: bool, reason_clause_idx: int = -1):
         self.v[literal] = tv
         self.assignments_stack.append((literal, self.current_level, reason_clause_idx))
         self.levels[abs(literal)] = self.current_level
         self.assigned_count += 1
-        #print(f"I have assigned {literal} @ level {self.current_level} because of {self.cnf[reason_clause_idx]} [{self.assigned_count}/{self.cnf.n_vars}]")
-        return True
 
     def unassign(self, literal: Literal):
         self.v[literal] = None
         self.levels[abs(literal)] = None
         self.assigned_count -= 1
-        #print(f"I have unassigned {literal} [{self.assigned_count}/{self.cnf.n_vars}]")
 
-    def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF):
+    def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF) -> bool:
         """
         Checks if all the one-literal clauses are compatible with each other. If they are
 
         :param cnf: The input CNF
-        :return: The filtered list of clauses
+        :return: False if both a clause [p] and [-p] are present. True otherwise 
         """
-        single_literals = set()
+        single_literals : set[Literal] = set()
         for clause in cnf.clauses:
             if len(clause) != 1: continue
             literal = clause[0]
             if -literal in single_literals:
-                raise ValueError("CNF cannot be satisfied!")
+                return False
             single_literals.add(literal)
         for l in single_literals:
             self.propagation_queue.append((l, -2))
+        return True
 
     def init_watchlist(self):
         """Initializes the watchlist by setting which clauses are watching which literals"""
@@ -272,6 +254,5 @@ class CDCL:
                     max_v = v
                     max_literal = literal
 
-        if not max_literal:
-            raise ValueError("No valid propositional letters found")
+        assert max_literal is not None, "The heuristic has not found any unassigned letter" 
         return max_literal

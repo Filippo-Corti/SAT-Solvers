@@ -11,7 +11,7 @@ class PartialTruthAssignment:
 
     Valid values are True, False and Unassigned (None).
     """
-    d: dict[int, int | None]
+    d: dict[int, bool | None]
     n_keys: int
 
     def __init__(self, n_vars: int):
@@ -55,7 +55,7 @@ class TrackedClause(dimacs.Clause):
         """
         super().__init__(literals)
         assert len(literals) >= 2
-        watchable = list()
+        watchable: list[Literal] = list()
         for literal in self.literals:
             if -literal not in true_literals:
                 watchable.append(literal)
@@ -89,7 +89,7 @@ class TrackedClause(dimacs.Clause):
         :param v: The current partial assignment
         :return: The new watched literals
         """
-        literals = list()
+        literals: list[Literal] = list()
         for literal in self.literals:
             if literal in self.watched or v[literal] == False:
                 continue

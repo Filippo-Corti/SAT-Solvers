@@ -10,7 +10,7 @@ class Clause:
     def __iter__(self):
         return iter(self.literals)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int) -> int:
         return self.literals[item]
 
     def __len__(self):
