@@ -4,11 +4,12 @@
 
 ### TODO:
 
-- [ ] Parser from a String format to an AST (Abstract Syntax Tree)
-- [ ] Conversion from AST to CNF AST
-- [ ] CNF AST to CNF DIMACS
-- [ ] Implement DPLL algorithm
-- [ ] Implement CDCL algorithm
+- [X] Parser from a String format to an AST (Abstract Syntax Tree)
+- [X] Conversion from AST to CNF AST
+- [X] CNF AST to CNF DIMACS
+- [X] Implement DPLL algorithm
+- [X] Implement CDCL algorithm
+
 
 ### References:
 
