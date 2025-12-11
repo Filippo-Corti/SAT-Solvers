@@ -1,4 +1,4 @@
-from .prop_ast import UnaryOp, ASTNode, BinaryOp
+from .AST import UnaryOp, ASTNode, BinaryOp
 
 
 class Not(UnaryOp):
@@ -9,7 +9,7 @@ class Not(UnaryOp):
             child: ASTNode,
             label: str = "¬"
     ):
-        super().__init__(child, label="¬")
+        super().__init__(child, label=label)
 
 
 class And(BinaryOp):
@@ -21,7 +21,7 @@ class And(BinaryOp):
             right: ASTNode,
             label: str = "∧"
     ):
-        super().__init__(left, right, label="∧")
+        super().__init__(left, right, label=label)
 
 
 class Or(BinaryOp):
@@ -33,7 +33,7 @@ class Or(BinaryOp):
             right: ASTNode,
             label: str = "∨"
     ):
-        super().__init__(left, right, label="∨")
+        super().__init__(left, right, label=label)
 
 
 class Implication(BinaryOp):
@@ -45,4 +45,4 @@ class Implication(BinaryOp):
             right: ASTNode,
             label: str = "→"
     ):
-        super().__init__(left, right, label="→")
+        super().__init__(left, right, label=label)

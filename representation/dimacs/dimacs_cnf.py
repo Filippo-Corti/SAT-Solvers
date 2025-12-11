@@ -7,24 +7,45 @@ class DimacsCNF:
     A class that represents a propositional formula in CNF (Conjunctive Normal Form).
 
     It represents it as a list of clauses.
-    """
-    clauses: list[Clause]
-    n_vars: int
-    v_clauses: int
 
-    def __init__(
-            self,
-            clauses: list[Clause],
-            n_vars: int
-    ) -> None:
+    :ivar list[int] clauses: the list of clauses in the CNF
+    :ivar int n_vars: the number of variables in the CNF
+    """
+
+    def __init__(self, clauses: list[Clause], n_vars: int) -> None:
         self.clauses = clauses
         self.n_vars = n_vars
-        self.v_clauses = len(clauses)
 
     @staticmethod
     def from_file(path: str) -> "DimacsCNF":
-        from .parser import parse
-        return parse(path)
+        """
+        Reads the specified file and returns the corresponding DIMACS CNF.
+
+        :param path: the path to the file
+        :return: the DIMACS CNF
+        """
+        clauses = list()
+        n_vars = -1
+        for line in open(path):
+            line = line.strip()
+            if not line: continue
+            if line[0] == 'c':
+                continue
+            if line[0] == 'p':
+                tokens = line.split(' ')
+                if n_vars == -1:
+                    n_vars = int(tokens[2])
+            else:
+                tokens = line.split(' ')
+                clause = Clause(
+                    literals=[int(t) for t in tokens[:-1]]
+                )
+                clauses.append(clause)
+
+        return DimacsCNF(
+            clauses,
+            n_vars=n_vars
+        )
 
     @staticmethod
     def from_ast(f: ast.PropFormula) -> "DimacsCNF":
@@ -54,10 +75,10 @@ class DimacsCNF:
 
         def extract_cnf(node):
             if isinstance(node, ast.And):
-                clauses = list()
+                cs = list()
                 for c in node.children:
-                    clauses.extend(extract_cnf(c))
-                return clauses
+                    cs.extend(extract_cnf(c))
+                return cs
 
             return [extract_clause(node)]  # Single clause
 

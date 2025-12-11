@@ -1,6 +1,7 @@
-from nf_conversions import to_IFNF, to_NNF, to_equisat_CNF
 from representation import ast, dimacs
 from sat_solvers import DPLL, CDCL
+from sat_solvers.utils import CDCLOptions
+from sat_solvers.utils.options import HeuristicType
 
 #s = "(x1 ∨ x2 ∨ ¬x3) ∧ (¬x2 ∨ x3)"
 #s = "(!p | q | r) & (p | !q | !r) & (q | r) & (q | !r) & (!p | !q | !r)"
@@ -19,7 +20,9 @@ from sat_solvers import DPLL, CDCL
 # print(f"Equisat CNF:\t{f4}")
 # cnf = dimacs.DimacsCNF.from_ast(f4)
 
-cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
+#cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
+cnf = dimacs.DimacsCNF.from_file("examples/uf250/uf250-010.cnf")
+#cnf = dimacs.DimacsCNF.from_file("examples/uf250/uuf250-01.cnf")
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-1_6-yes1-1.cnf")
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-100-1_6-no-2.cnf") # The condition count == 1 is still false when we find a decision node
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-200-6_0-yes1-3.cnf") # KeyError on self.levels[abs(literal)]
@@ -27,7 +30,15 @@ cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
 
 print(f"Dimacs CNF:\t{cnf}")
 
-cdcl = CDCL(cnf)
+cdcl = CDCL(
+    cnf=cnf,
+    options=CDCLOptions(
+        heuristic=HeuristicType.VSIDS,
+        restarts=True,
+        forgets=True,
+        timeout_seconds=1200
+    )
+)
 found = cdcl.solve()
 if found:
     print(f"CNF is SAT: {cdcl.v}")

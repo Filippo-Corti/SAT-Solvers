@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 
 from representation import dimacs
-from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal
+from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF
 
 
 class DPLL:
@@ -14,10 +14,10 @@ class DPLL:
     cnf: TrackedCNF
     v: PartialTruthAssignment
     assigned_count: int
-    assignments_stack: list[tuple[Literal, int]] # [literal, level at which it was assigned]
+    assignments_stack: list[tuple[int, int]] # [literal, level at which it was assigned]
     watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
     current_level: int
-    propagation_queue: deque[Literal]  # List of literals to propagate on
+    propagation_queue: deque[int]  # List of literals to propagate on
 
     def __init__(self, cnf: dimacs.DimacsCNF):
         self.v = PartialTruthAssignment(cnf.n_vars)
@@ -112,13 +112,13 @@ class DPLL:
 
         self.propagation_queue.clear()
 
-    def assign(self, literal: Literal, tv: bool) -> bool:
+    def assign(self, literal: int, tv: bool) -> bool:
         self.v[literal] = tv
         self.assignments_stack.append((literal, self.current_level))
         self.assigned_count += 1
         return True
 
-    def unassign(self, literal: Literal):
+    def unassign(self, literal: int):
         self.v[literal] = None
         self.assigned_count -= 1
 
@@ -147,7 +147,7 @@ class DPLL:
             self.watchlist[w1].add(idx)
             self.watchlist[w2].add(idx)
 
-    def choose_splitting_literal(self) -> Literal:
+    def choose_splitting_literal(self) -> int:
         """
         Heuristic that chooses the next literal to split on.
 
@@ -157,7 +157,7 @@ class DPLL:
         :return: the next literal to split on (that is, the propositional letter and how to set it)
         """
         max_v = 0
-        max_literal: Literal | None = None
+        max_literal: int | None = None
         for i in range(self.cnf.n_vars):
             letter = i + 1
             if self.v[letter] is not None: continue

@@ -1,6 +1,8 @@
 import os
 from representation import dimacs
 from sat_solvers import DPLL, CDCL
+from sat_solvers.utils import CDCLOptions
+from sat_solvers.utils.options import HeuristicType
 
 AIM_DIR = "examples/aim"
 
@@ -33,7 +35,15 @@ def run_all_aim():
         cnf = dimacs.DimacsCNF.from_file(full_path)
 
         # run solver
-        solver = CDCL(cnf)
+        solver = CDCL(
+            cnf=cnf,
+            options=CDCLOptions(
+                heuristic=HeuristicType.VSIDS,
+                forgets=True,
+                restarts=True,
+                timeout_seconds=60
+            )
+        )
         found = solver.solve()
 
         # report

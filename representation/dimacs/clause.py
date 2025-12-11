@@ -1,8 +1,9 @@
 class Clause:
     """
-    A clause in a CNF
+    A clause in a CNF.
+
+    :ivar list[int] literals: the list of literals in the clause
     """
-    literals: list[int]
 
     def __init__(self, literals: list[int]) -> None:
         self.literals = literals

@@ -1,8 +1,15 @@
+import time
 from collections import defaultdict, deque
-from heapq import heappush, heappop
 
 from representation import dimacs
-from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal, VSIDS
+from .utils import (
+    PartialTruthAssignment,
+    TrackedClause,
+    TrackedCNF,
+    Defaults,
+    CDCLOptions, AssignmentStackEntry, PropagationQueueEntry
+)
+from .extras import ClauseForgetter, Restarter
 
 
 class CDCL:
@@ -11,28 +18,46 @@ class CDCL:
 
     The algorithm tries to find a truth assignment that validates a CNF, in order to determine
     whether the CNF is or is not satisfiable.
-    """
-    cnf: TrackedCNF
-    v: PartialTruthAssignment
-    assigned_count: int
-    current_level: int
-    assignments_stack: list[tuple[Literal, int, int]]  # [literal, level at which it was assigned, reason clause index]
-    watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
-    propagation_queue: deque[tuple[Literal, int]]  # List of [literal, reason clause index] to propagate on
-    levels: dict[int, int | None]  # [propositional letter, level at which it was assigned a truth value]
-    vsids: VSIDS
 
-    def __init__(self, cnf: dimacs.DimacsCNF):
+    :ivar TrackedCNF cnf: The CNF the solver should work on.
+    :ivar PartialTruthAssignment v: The truth assignment being built by the solver.
+    :ivar int current_level: the level of depth at which the solver is currently at.
+    :ivar list[AssignmentStackEntry] assignments_stack: stack keeping track of which assignments have been made.
+    :ivar dict[int, int] levels: maps each propositional letter to the level it was last assigned at.
+    :ivar deque[PropagationQueueEntry] propagation_queue: queue keeping track of the literals on which the solver should propagate.
+    :ivar dict[int, set[int]] watchlist: for each literal, it keeps track of which clauses are watching it.
+    :ivar CDCLOptions options: options for the solver.
+    :ivar int timeout_time: time at which the solver should time out.
+
+    :ivar Heuristic heuristic: the heuristic used by the solver to decide assignments.
+    :ivar ClauseForgetter forgetter: the module handling learnt clause forgetting logic.
+    :ivar Restarter restarter: the module handling restarting logic.
+    """
+
+    SAT = True
+    UNSAT = False
+
+    def __init__(
+            self,
+            cnf: dimacs.DimacsCNF,
+            options: CDCLOptions,
+    ):
         self.v = PartialTruthAssignment(cnf.n_vars)
-        self.assigned_count = 0
         self.current_level = 0
-        self.propagation_queue = deque()
-        self.assignments_stack = list()
+        self.assignments_stack: list[AssignmentStackEntry] = list()
         self.levels = dict()
-        self.vsids = VSIDS(cnf.n_vars)
+        self.propagation_queue: deque[PropagationQueueEntry] = deque()
+        self.watchlist = defaultdict(set)
+
+        self.options = options
+        self.timeout_time = time.time() + options.timeout_seconds
+
+        self.heuristic = options.heuristic.get_class()(n_vars=cnf.n_vars)
+        self.forgetter = ClauseForgetter()
+        self.restarter = Restarter()
 
         ok = self.handle_one_literal_clauses(cnf)
-        assert ok, "A conflict was found just by looking at one-literal clauses"            
+        assert ok, "A conflict was found just by looking at one-literal clauses"
         self.cnf = TrackedCNF(
             clauses=[
                 TrackedClause(literals=clause.literals, true_literals=[l for l, _ in list(self.propagation_queue)])
@@ -45,33 +70,52 @@ class CDCL:
 
     def solve(self) -> bool:
         """
-        Performs the DPLL procedure on self.cnf.
+        Performs the CDCL procedure on self.cnf.
 
-        :return: True if a satisfying assignment was found. False otherwise.
+        :return: True if a satisfying assignment is found. False otherwise.
         """
-        while True:
+        while time.time() < self.timeout_time:
             conflict_clause_idx = self.propagate()
+
             match conflict_clause_idx:
-                case -2:  # Conflict caused by a clause with only 1 literal (so the CNF is UNSAT)
-                    return False
-                case -1:  # No conflict
-                    if self.assigned_count == self.cnf.n_vars:
-                        return True
-                    decision_literal = self.vsids.choose_decision_literal(self.v)
-                    self.current_level += 1
-                    self.propagation_queue.append((decision_literal, -1))
-                case _:  # Conflict caused by a clause with at least 2 literals
-                    if self.current_level == 0: return False
-                    learnt_clause, literal_to_propagate = self.learn(conflict_clause_idx, self.current_level)
-                    self.update_activity(learnt_clause)
-                    if len(learnt_clause) == 1:  # Single-literal clauses are overall forced assignments. We do not need to learn them
-                        self.backjump(0)
-                        self.propagation_queue.append((list(learnt_clause)[0], -2))
-                    else:
-                        level = self.get_second_highest_level(learnt_clause)
-                        added_idx = self.add_learnt_clause(learnt_clause)
-                        self.backjump(level)
-                        self.propagation_queue.append((literal_to_propagate, added_idx))
+                case Defaults.GLOBAL_UNIT_CLAUSE_REASON:
+                    # Conflict caused by a clause with only 1 literal. The CNF is therefore UNSAT.
+                    return CDCL.UNSAT
+                case Defaults.NO_CONFLICT:
+                    # Propagation ended with no conflict. We are either finished or we should take a decision.
+                    if self.v.is_total():
+                        return CDCL.SAT
+                    self.branch()
+                case _:
+                    # Conflict caused by a clause with at least 2 literals.
+                    # Conflicts at level 0 imply UNSAT.
+                    # In all the other cases, we should learn, backjump and start over
+                    if self.current_level == 0:
+                        return CDCL.UNSAT
+
+                    self.forgetter.on_conflict()
+                    self.restarter.on_conflict()
+                    clause, literal = self.resolve(conflict_clause_idx, self.current_level)
+                    self.learn(clause, literal)
+                    self.heuristic.on_learnt_clause(clause)
+
+        raise TimeoutError("Timed out while solving.")
+
+    def branch(self):
+        """
+        Decides what the new assignment should be and pushes the decision to the propagation queue.
+        Also handles restarts and forgets.
+        """
+        if self.restarter.should_restart() and self.options.restarts:
+            self.restarter.on_restart()
+            if self.forgetter.should_forget() and self.options.forgets:
+                self.forgetter.on_forget()
+                self.forget()
+            self.restart()
+
+        decision = self.heuristic.pick_literal(self)
+        self.propagation_queue.append(PropagationQueueEntry(decision, Defaults.DECISION_CLAUSE_REASON))
+        self.current_level += 1
 
     def propagate(self) -> int:
         """
@@ -81,16 +125,24 @@ class CDCL:
         :return: The index of the conflict clause, if the propagation reaches a conflict. -1 otherwise.
         """
         while self.propagation_queue:
-            literal, reason_clause_idx = self.propagation_queue.popleft()
-            current_tv : bool | None = self.v[literal]
-            if current_tv == False: return reason_clause_idx  # Conflict
-            if current_tv: continue
-            self.assign(literal, True, reason_clause_idx)
-            for clause_idx in list(self.watchlist[-literal]):
+            entry = self.propagation_queue.popleft()
+            current_tv = self.v[entry.literal]
+
+            if current_tv == False:
+                # We are trying to re-assign a literal. This suggests there's a conflict
+                return entry.reason_clause_idx
+            if current_tv:
+                # The literal was already assigned to this value. We do not need to propagate again.
+                continue
+
+            # We should assign the literal, then propagate looking at the watchlist
+            self.assign(entry.literal, True, entry.reason_clause_idx)
+            for clause_idx in list(self.watchlist[-entry.literal]):
                 clause = self.cnf[clause_idx]
-                verified = clause.check(self.v)
-                if verified: continue
+
+                # We need to check if the assignment caused conflicts or forced new assignments
                 # In CDCL, there is a chance that watched literals are not correct due to backjumping
+                # We should always make sure 2-watched literals are correct before calling out a conflict
                 old_watched = clause.watched
                 clause.update_watched(self.v)
                 new_watched = clause.watched
@@ -98,23 +150,47 @@ class CDCL:
                     if old_watch == new_watch: continue
                     self.watchlist[old_watch].remove(clause_idx)
                     self.watchlist[new_watch].add(clause_idx)
-                verified = clause.check(self.v)
-                if verified: continue
-                if verified == False: return clause_idx # Conflict
-                # verified is None ---> [None, None] or [False, None]
-                tv1, tv2 = self.v[new_watched[0]], self.v[new_watched[1]]
-                if tv1 is None and tv2 is None: continue
-                if tv1 is None:
-                    none_literal = new_watched[0]
-                    self.propagation_queue.append((none_literal, clause_idx))
-                elif tv2 is None:
-                    none_literal = new_watched[1]
-                    self.propagation_queue.append((none_literal, clause_idx))
-        return -1
 
-    def learn(self, conflict_clause_idx: int, conflict_level: int) -> tuple[set[Literal], Literal]:
+                tv1, tv2 = self.v[new_watched[0]], self.v[new_watched[1]]
+                if (tv1 or tv2) or (tv1 is None and tv2 is None):
+                    # Verified and undecided cases are uninteresting
+                    continue
+                if tv1 == False and tv2 == False:
+                    # The clause cannot be verified. We found a conflict
+                    return clause_idx
+                if tv1 is None:
+                    # tv1 is None and tv2 is False. We should force first literal to True
+                    self.propagation_queue.append(PropagationQueueEntry(new_watched[0], clause_idx))
+                elif tv2 is None:
+                    # tv1 is None and tv2 is False. We should force first literal to True
+                    self.propagation_queue.append(PropagationQueueEntry(new_watched[1], clause_idx))
+
+        return Defaults.NO_CONFLICT
+
+    def learn(self, clause: set[int], literal: int):
         """
-        Starting from a conflict, it finds the clause learnt by cutting the implication graph
+        Learns the clause by adding it to the set of clauses componing the CNF.
+        Then, it prepares to resume the search by:
+        1) Backjumping to the correct level.
+        2) Queueing the literal for propagation
+
+        :param clause: the clause to learn
+        :param literal: the literal at conflict level in the First-UIP
+        """
+        if len(clause) == 1:
+            # Single-literal clauses are overall forced assignments. We do not need to learn them (just enforce them)
+            self.backjump(0)
+            self.propagation_queue.append(PropagationQueueEntry(literal, Defaults.GLOBAL_UNIT_CLAUSE_REASON))
+            return
+
+        level = self.get_second_highest_level(clause)
+        added_idx = self.add_clause(clause)
+        self.backjump(level)
+        self.propagation_queue.append(PropagationQueueEntry(literal, added_idx))
+
+    def resolve(self, conflict_clause_idx: int, conflict_level: int) -> tuple[set[int], int]:
+        """
+        Starting from a conflict, it finds a learnt clause by cutting the implication graph
         on a First-UIP (Unique Implication Point). This clause should be the one that CDCL learns from the conflict.
 
         In order to determine the First-UIP, it uses the Resolution Rule:
@@ -126,38 +202,33 @@ class CDCL:
         :param conflict_level: the level at which the conflict happened.
         :return: the learnt clause (as a set of literals) and the literal on which propagation should happen.
         """
-
-        def count_literals_at_conflict_level(c: set[Literal]) -> tuple[int, Literal]:
-            """Counts the number of literals at conflict level and also returns one of them"""
-            l = None
-            count = 0
-            for literal in c:
-                level = self.levels[abs(literal)]
-                if level == conflict_level:
-                    count += 1
-                    l = literal
-            assert l is not None, "There should be at least one literal at conflict level in the clause"
-            return count, l
-
+        self.forgetter.increase_clause_activity(conflict_clause_idx)
         clause = set(self.cnf[conflict_clause_idx])
+
         idx_on_stack = len(self.assignments_stack) - 1
         while idx_on_stack >= 0:
-            count, literal = count_literals_at_conflict_level(clause)
+            # Resolution stops when the resolved clause has only one literal at conflict level
+            last, count = None, 0
+            for lit in clause:
+                if self.levels.get(abs(lit)) == conflict_level:
+                    count, last = count + 1, lit
             if count == 1:
-                return clause, literal
+                return clause, last
 
-            assigned_literal, assignment_level, reason_clause_idx = self.assignments_stack[idx_on_stack]
-            if assignment_level == conflict_level and -assigned_literal in clause:
-                reason_clause = set(self.cnf[reason_clause_idx])
-                if assigned_literal in reason_clause:
-                    clause.remove(-assigned_literal)
-                    reason_clause.remove(assigned_literal)
+            # Otherwise, read from the stack and apply resolution (if possible)
+            entry = self.assignments_stack[idx_on_stack]
+            if entry.level == conflict_level and -entry.literal in clause:
+                reason_clause = set(self.cnf[entry.reason_clause_idx])
+                if entry.literal in reason_clause:
+                    clause.remove(-entry.literal)
+                    reason_clause.remove(entry.literal)
                     clause.update(reason_clause)
+                    self.forgetter.increase_clause_activity(entry.reason_clause_idx)
             idx_on_stack -= 1
 
         assert False, "We should never reach the end of the stack without finding the First-UIP"
 
-    def get_second_highest_level(self, clause: set[Literal]) -> int:
+    def get_second_highest_level(self, clause: set[int]) -> int:
         """
         :return: the second-highest level at which a literal in the clause was assigned.
         """
@@ -166,13 +237,12 @@ class CDCL:
             level = self.levels[abs(literal)]
             assert level is not None, "All literals in the clause built through resolution should be assigned"
             if level > l1:
-                l2 = l1
-                l1 = level
+                l1, l2 = level, l1
             elif level > l2:
                 l2 = level
         return l2
 
-    def add_learnt_clause(self, clause: set[Literal]) -> int:
+    def add_clause(self, clause: set[int]) -> int:
         """
         Adds a new learnt clause to the CNF we are trying to satisfy
 
@@ -182,8 +252,7 @@ class CDCL:
             literals=list(clause),
             true_literals=[l for l in clause if self.v[l]]
         )
-        self.cnf.clauses.append(tracked_clause)
-        idx = len(self.cnf.clauses) - 1
+        idx = self.cnf.add_learnt_clause(tracked_clause)
         w1, w2 = tracked_clause.watched
         self.watchlist[w1].add(idx)
         self.watchlist[w2].add(idx)
@@ -192,25 +261,24 @@ class CDCL:
     def backjump(self, target_level: int):
         """
         Jumps back from all the considerations and assignments made at any level below target_level.
+        It also clears the propagation queue
         """
-        while self.assignments_stack and self.assignments_stack[-1][1] > target_level:
+        while self.assignments_stack and self.assignments_stack[-1].level > target_level:
             head = self.assignments_stack.pop()
-            self.unassign(head[0])
+            self.unassign(head.literal)
 
         self.current_level = target_level
         self.propagation_queue.clear()
 
-    def assign(self, literal: Literal, tv: bool, reason_clause_idx: int = -1):
+    def assign(self, literal: int, tv: bool, reason_clause_idx: int = -1):
         self.v[literal] = tv
-        self.vsids.set_phase(abs(literal), literal >= 0)
-        self.assignments_stack.append((literal, self.current_level, reason_clause_idx))
+        self.assignments_stack.append(AssignmentStackEntry(literal, self.current_level, reason_clause_idx))
         self.levels[abs(literal)] = self.current_level
-        self.assigned_count += 1
+        self.heuristic.on_assign(abs(literal), literal >= 0)
 
-    def unassign(self, literal: Literal):
+    def unassign(self, literal: int):
         self.v[literal] = None
         self.levels[abs(literal)] = None
-        self.assigned_count -= 1
 
     def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF) -> bool:
         """
@@ -219,29 +287,44 @@ class CDCL:
         :param cnf: The input CNF
         :return: False if both a clause [p] and [-p] are present. True otherwise 
         """
-        single_literals : set[Literal] = set()
-        for clause in cnf.clauses:
-            if len(clause) != 1: continue
-            literal = clause[0]
+        # Check for potential opposite one-literals ([p] and [-p])
+        single_literals = set()
+        for c in cnf.clauses:
+            if len(c) != 1:
+                continue
+            literal = c[0]
             if -literal in single_literals:
-                return False
+                return CDCL.UNSAT
             single_literals.add(literal)
+
+        # Enqueue propagation of all single literals - they are forced assignments
         for l in single_literals:
-            self.propagation_queue.append((l, -2))
+            self.propagation_queue.append(PropagationQueueEntry(l, Defaults.GLOBAL_UNIT_CLAUSE_REASON))
         return True
 
     def init_watchlist(self):
         """Initializes the watchlist by setting which clauses are watching which literals"""
-        self.watchlist = defaultdict(set)
-        for idx, clause in enumerate(self.cnf):
-            w1, w2 = clause.watched
+        for idx, c in enumerate(self.cnf):
+            w1, w2 = c.watched
             self.watchlist[w1].add(idx)
             self.watchlist[w2].add(idx)
 
-    def update_activity(self, clause: set[Literal]):
+    def restart(self):
         """
-        Updates the activity level of each propositional letter appearing in the clause.
-        :param clause: a clause
+        By "restarting" the CDCL procedure, we simply mean forcing a backjump to level 0.
+        This clears all assignments, but not those that are overall forced (single clauses).
         """
-        for literal in clause:
-            self.vsids.increase_letter_activity(abs(literal))
+        self.backjump(0)
+
+    def forget(self):
+        """
+        Forgets learnt clauses that are considered not as useful anymore.
+
+        This avoids memory requirements to explode and, most importantly, avoids excessive propagation times
+        due to too many clauses to propagate on.
+        """
+        for idx in self.forgetter.choose_clauses_to_forget(self.cnf, self.levels):
+            w1, w2 = self.cnf[idx].watched
+            self.watchlist[w1].remove(idx)
+            self.watchlist[w2].remove(idx)
+            self.cnf.forget_learnt_clause(idx)
