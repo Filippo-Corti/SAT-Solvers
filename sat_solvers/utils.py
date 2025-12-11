@@ -143,7 +143,10 @@ class VSIDS:
     activity: dict[int, float]
     heap: list[tuple[int, int]]
     increase_amount: float
-    decay: float
+
+    DECAY = 0.95
+    MAX_ACTIVITY = 1e100
+    NORMALIZATION_FACTOR = 1e-100
 
     def __init__(self, n_vars: int):
         self.n_vars = n_vars
@@ -151,7 +154,6 @@ class VSIDS:
         self.activity = defaultdict(float)
         self.heap = []
         self.increase_amount = 1.0
-        self.decay = 0.95
 
         # initialize each var only once
         for v in range(1, n_vars + 1):
@@ -159,13 +161,21 @@ class VSIDS:
 
     def increase_letter_activity(self, prop_letter: int):
         self.activity[prop_letter] += self.increase_amount
+        if self.activity[prop_letter] > self.MAX_ACTIVITY:
+            self.normalize()
         heapq.heappush(self.heap, (-self.activity[prop_letter], prop_letter))
 
     def decay_activities(self):
-        self.increase_amount /= self.decay
+        self.increase_amount /= self.DECAY
 
     def set_phase(self, prop_letter: int, phase: bool | None):
         self.phase[prop_letter] = phase
+
+    def normalize(self):
+        """Normalization is required when activity values become too high, to avoid overflow"""
+        for var in self.activity:
+            self.activity[var] *= self.NORMALIZATION_FACTOR
+        self.increase_amount *= self.NORMALIZATION_FACTOR
 
     def choose_decision_literal(self, v: PartialTruthAssignment) -> int | None:
         """

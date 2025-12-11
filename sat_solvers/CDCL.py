@@ -241,22 +241,7 @@ class CDCL:
     def update_activity(self, clause: set[Literal]):
         """
         Updates the activity level of each propositional letter appearing in the clause.
-        TODO: normalize activity when restarting
         :param clause: a clause
         """
         for literal in clause:
             self.vsids.increase_letter_activity(abs(literal))
-
-    def choose_decision_literal(self) -> Literal:
-
-        print(self.letter_activity_heap)
-        while self.letter_activity_heap:
-            neg_activity, prop_letter = heappop(self.letter_activity_heap)
-            if self.v[prop_letter] is None and -neg_activity == self.letter_activity[prop_letter]:
-                return prop_letter if self.phase.get(prop_letter) else -prop_letter
-            elif neg_activity == 0:
-                heappush(self.letter_activity_heap, (neg_activity, prop_letter))
-                print(f"Did not take {prop_letter} because {self.v[prop_letter]} and {self.letter_activity[prop_letter]}")
-
-        print(self.letter_activity_heap)
-        assert False, f"The heuristic has not found any unassigned letter, {self.letter_activity}"
