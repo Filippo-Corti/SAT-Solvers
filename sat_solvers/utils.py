@@ -1,9 +1,11 @@
 from typing import Iterator
+import heapq
+from collections import defaultdict
 
 from representation import dimacs
 
-
 type Literal = int
+
 
 class PartialTruthAssignment:
     """
@@ -102,6 +104,7 @@ class TrackedClause(dimacs.Clause):
                 literals.append(literal)
         return literals
 
+
 class TrackedCNF(dimacs.DimacsCNF):
     """
     A DIMACS CNF with additional attributes required for SAT solving
@@ -128,3 +131,63 @@ class TrackedCNF(dimacs.DimacsCNF):
                     all_true = False
 
         return all_true
+
+
+class VSIDS:
+    """
+    A class that handles a VSIDS Heuristic to pick the branching literal.
+    It uses phase saving to choose the truth value of the highest-activity propositional letter
+    """
+    n_vars: int
+    phase: dict[int, bool | None]  # [propositional letter, last assigned truth value]
+    activity: dict[int, float]
+    heap: list[tuple[int, int]]
+    increase_amount: float
+    decay: float
+
+    def __init__(self, n_vars: int):
+        self.n_vars = n_vars
+        self.phase = dict()
+        self.activity = defaultdict(float)
+        self.heap = []
+        self.increase_amount = 1.0
+        self.decay = 0.95
+
+        # initialize each var only once
+        for v in range(1, n_vars + 1):
+            heapq.heappush(self.heap, (0.0, v))  # (-activity, var) but activity=0
+
+    def increase_letter_activity(self, prop_letter: int):
+        self.activity[prop_letter] += self.increase_amount
+        heapq.heappush(self.heap, (-self.activity[prop_letter], prop_letter))
+
+    def decay_activities(self):
+        self.increase_amount /= self.decay
+
+    def set_phase(self, prop_letter: int, phase: bool | None):
+        self.phase[prop_letter] = phase
+
+    def choose_decision_literal(self, v: PartialTruthAssignment) -> int | None:
+        """
+        Heuristic that chooses the next literal to set True.
+
+        Decision is based on VSIDS (Variable State Independent Decaying Sum):
+        * the propositional letter is chosen according to their activity level, which measures how much the letter
+        has appeared in recent conflicts
+        * the truth value (True/False) is chosen according to the phase. If it is the first assignment, we choose False.
+
+        :return: the next literal to set True (that is, the propositional letter and how to set it)
+        """
+        while self.heap:
+            neg_act, prop_letter = heapq.heappop(self.heap)
+            if -neg_act == self.activity[prop_letter] and v[prop_letter] is None:
+                sign = 1 if self.phase.get(prop_letter, False) else -1
+                return prop_letter * sign
+
+        for prop_letter in range(1, self.n_vars + 1):  # Fallback
+            if v[prop_letter] is None:
+                sign = 1 if self.phase.get(prop_letter, False) else -1
+                heapq.heappush(self.heap, (-self.activity[prop_letter], prop_letter))
+                return prop_letter * sign
+
+        assert False, "There are no unassigned variables left"

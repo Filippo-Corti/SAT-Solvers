@@ -168,6 +168,5 @@ class DPLL:
                     max_v = v
                     max_literal = literal
 
-        if not max_literal:
-            raise ValueError("No valid propositional letters found")
+        assert max_literal is not None, "The heuristic has not found any unassigned letter"
         return max_literal

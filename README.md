@@ -14,6 +14,13 @@
 - [ ] Test DPLL and CDCL using an external solver and known datasets + generated data
 - [ ] Test the preprocessing pipeline using bruteforcing
 
+### Times:
+
+**DPLL**: Can only solve 50- instances and some lucky 100-  
+**CDCL (from DPLL)**: 5.5s   
+**CDCL with VSIDS instad of DLIS**: 0.45s
+
+
 ### References:
 
 DIMACS CNF Format:   

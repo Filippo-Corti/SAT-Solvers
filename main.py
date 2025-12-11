@@ -27,7 +27,7 @@ cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
 
 print(f"Dimacs CNF:\t{cnf}")
 
-cdcl = DPLL(cnf)
+cdcl = CDCL(cnf)
 found = cdcl.solve()
 if found:
     print(f"CNF is SAT: {cdcl.v}")

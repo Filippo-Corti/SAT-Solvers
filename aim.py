@@ -47,7 +47,9 @@ def run_all_aim():
         print(f"→ Expected:      {expected_status}")
         print(f"→ Correct?       {correct}")
         if status == "SAT":
-            print(f"→ Assignment?    {solver.cnf.check(solver.v)}")
+            assignment = solver.cnf.check(solver.v)
+            print(f"→ Assignment?    {assignment}")
+            assert assignment
 
     # summary
     print("\n=== SUMMARY ===")

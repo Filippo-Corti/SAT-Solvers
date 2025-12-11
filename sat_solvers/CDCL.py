@@ -1,7 +1,8 @@
 from collections import defaultdict, deque
+from heapq import heappush, heappop
 
 from representation import dimacs
-from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal
+from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF, Literal, VSIDS
 
 
 class CDCL:
@@ -19,6 +20,7 @@ class CDCL:
     watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
     propagation_queue: deque[tuple[Literal, int]]  # List of [literal, reason clause index] to propagate on
     levels: dict[int, int | None]  # [propositional letter, level at which it was assigned a truth value]
+    vsids: VSIDS
 
     def __init__(self, cnf: dimacs.DimacsCNF):
         self.v = PartialTruthAssignment(cnf.n_vars)
@@ -27,6 +29,7 @@ class CDCL:
         self.propagation_queue = deque()
         self.assignments_stack = list()
         self.levels = dict()
+        self.vsids = VSIDS(cnf.n_vars)
 
         ok = self.handle_one_literal_clauses(cnf)
         assert ok, "A conflict was found just by looking at one-literal clauses"            
@@ -54,12 +57,13 @@ class CDCL:
                 case -1:  # No conflict
                     if self.assigned_count == self.cnf.n_vars:
                         return True
-                    decision_literal = self.choose_decision_literal()
+                    decision_literal = self.vsids.choose_decision_literal(self.v)
                     self.current_level += 1
                     self.propagation_queue.append((decision_literal, -1))
                 case _:  # Conflict caused by a clause with at least 2 literals
                     if self.current_level == 0: return False
                     learnt_clause, literal_to_propagate = self.learn(conflict_clause_idx, self.current_level)
+                    self.update_activity(learnt_clause)
                     if len(learnt_clause) == 1:  # Single-literal clauses are overall forced assignments. We do not need to learn them
                         self.backjump(0)
                         self.propagation_queue.append((list(learnt_clause)[0], -2))
@@ -198,6 +202,7 @@ class CDCL:
 
     def assign(self, literal: Literal, tv: bool, reason_clause_idx: int = -1):
         self.v[literal] = tv
+        self.vsids.set_phase(abs(literal), literal >= 0)
         self.assignments_stack.append((literal, self.current_level, reason_clause_idx))
         self.levels[abs(literal)] = self.current_level
         self.assigned_count += 1
@@ -233,26 +238,25 @@ class CDCL:
             self.watchlist[w1].add(idx)
             self.watchlist[w2].add(idx)
 
+    def update_activity(self, clause: set[Literal]):
+        """
+        Updates the activity level of each propositional letter appearing in the clause.
+        TODO: normalize activity when restarting
+        :param clause: a clause
+        """
+        for literal in clause:
+            self.vsids.increase_letter_activity(abs(literal))
+
     def choose_decision_literal(self) -> Literal:
-        """
-        Heuristic that chooses the next literal to set True.
 
-        Decision is based on DLIS (Dynamic Largest Individual Sum):
-        the literal that appears most often in unsatisfied clauses (only consider the watchlist)
+        print(self.letter_activity_heap)
+        while self.letter_activity_heap:
+            neg_activity, prop_letter = heappop(self.letter_activity_heap)
+            if self.v[prop_letter] is None and -neg_activity == self.letter_activity[prop_letter]:
+                return prop_letter if self.phase.get(prop_letter) else -prop_letter
+            elif neg_activity == 0:
+                heappush(self.letter_activity_heap, (neg_activity, prop_letter))
+                print(f"Did not take {prop_letter} because {self.v[prop_letter]} and {self.letter_activity[prop_letter]}")
 
-        :return: the next literal to set True (that is, the propositional letter and how to set it)
-        """
-        max_v = 0
-        max_literal: Literal | None = None
-        for i in range(self.cnf.n_vars):
-            letter = i + 1
-            if self.v[letter] is not None: continue
-            for sign in [-1, 1]:
-                literal = letter * sign
-                v = len([idx for idx in self.watchlist[literal] if not self.cnf[idx].check(self.v)])
-                if v > max_v or max_literal is None:
-                    max_v = v
-                    max_literal = literal
-
-        assert max_literal is not None, "The heuristic has not found any unassigned letter" 
-        return max_literal
+        print(self.letter_activity_heap)
+        assert False, f"The heuristic has not found any unassigned letter, {self.letter_activity}"
