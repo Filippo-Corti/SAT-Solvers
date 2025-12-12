@@ -5,12 +5,13 @@ from sat_solvers.BruteForcer import BruteForcer
 from sat_solvers.utils import CDCLOptions
 from sat_solvers.utils.options import HeuristicType
 
-s = "(x1 ∨ x2 ∨ ¬x3) ∧ (¬x2 ∨ x3)"
+#s = "(x1 ∨ x2 ∨ ¬x3) ∧ (¬x2 ∨ x3)"
 #s = "(!p | q | r) & (p | !q | !r) & (q | r) & (q | !r) & (!p | !q | !r)"
 #s = "!(A & B) | (C -> D) -> E"
 #s = "((C | D) & (C -> E)) | !(C | D) | !(C -> E)"
 #s = "p & (!p | !q | r) & !r"
 #s = "!(1 & 1)"
+s = "!(!p)"
 
 f = ast.PropFormula.from_string(s)
 print(f"Input:\t{f}")

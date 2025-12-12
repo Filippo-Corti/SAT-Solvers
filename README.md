@@ -1,55 +1,68 @@
-# SAT Solvers
+# SAT Solving, DPLL and CDCL
+
+Boolean satisfiability (SAT) is the problem of determining whether there exists an assignment of truth values to 
+variables that makes a propositional logic formula true.
+SAT is a central problem in computer science, with applications in automated reasoning, verification, planning, 
+optimization, and artificial intelligence. 
+
+This repository contains a minimal—but complete—pipeline for solving 
+logical consequence problems using propositional SAT solving. 
+A logical consequence problem asks whether a theory $\Gamma$ models a formula $A$:
+$$
+\begin{aligned}
+\Gamma \vDash A
+\end{aligned}
+$$
+This typically reduces to checking the **unsatisfiability** of the formula:
+$$
+\begin{aligned}
+F = \Gamma_1 \wedge \Gamma_2 \wedge ... \wedge \Gamma_N \wedge \lnot A
+\end{aligned}
+$$
+
+The repository includes formula parsing, preprocessing to an equisatisfiable conjunctive normal form (CNF), and a couple of SAT solvers.
+
+### DPLL
+
+DPLL (Davis–Putnam–Logemann–Loveland) is a classic backtracking-based algorithm for SAT. 
+It improves brute force search using unit propagation and pure literal elimination, allowing exponential reductions in search space.
+
+### CDCL
+
+CDCL (Conflict-Driven Clause Learning) extends DPLL with modern enhancements such as clause learning, backjumping, 
+and more advanced heuristics, making it the foundation of today's state-of-the-art SAT solvers.
 
 
+## Contents of the Repository:
 
-### TODO:
+Source code:
 
-- [X] Parser from a String format to an AST (Abstract Syntax Tree)
-- [X] Conversion from AST to CNF AST
-- [X] CNF AST to CNF DIMACS
-- [X] Implement DPLL algorithm
-- [X] Implement CDCL algorithm
+* `examples/` contains datasets and benchmark CNF instances used to test the solvers;
+* `representation/` contains the logic for parsing propositional formulas into Abstract Syntax Trees (ASTs) 
+and generating DIMACS CNF representations;
+* `preprocessing/` implements the transformation from a logical consequence problem into:
+  * **IFNF** (Implication Free Normal Form);
+  * **NNF** (Negation Normal Form);
+  * *Equisatisfiable* **CNF**, suitable for SAT solving;
+* `sat_solvers/` implements three solvers:
+  * A **Brute-Force Solver**, used as ground-truth for small problems;
+  * A **DPLL Solver**;
+  * A **CDCL Solver**.
 
-- [X] Refine CDCL with VSIDS and other improvements
-- [X] Add a way to configure CDCL simply
-- [X] Test DPLL and CDCL using known datasets
+Additional files:
 
-- [X] Build a utility class that handles theories and formulas directly (from a file)
-- [X] Make a python notebook that shows how the solver can be used
-- [X] Fix DPLL, copying from CDCL
-- [X] Build a bruteforce solver
-- [ ] Test the preprocessing pipeline using bruteforcing
-- [ ] Clean up README and we should be done
-
-### Times on the AIM dataset:
-
-- **DPLL**: Can only solve 50- instances and some lucky 100-
-- **CDCL (from DPLL)**: 5.5s
-- **CDCL with VSIDS instad of DLIS**: 0.45s
-- **CDCL with VSIDS instad of DLIS (+ restarts)**: 0.45s
+* [`example.ipynb`](example.ipynb) - Notebook demostrating the full pipeline, using CDCL;
+* [`test_cnfs.py`](test_cnfs.py) - File to test the solvers using some of the CNF-SAT benchmarks; 
+* [`test_theories.py`](test_theories.py) - File to test the solvers on some instances of logical consequence problems.
 
 
-### Times on the UF250 dataset:
+## References:
 
-- **CDCL with VSIDS instad of DLIS (+ restarts)**: 
-  - Runs uf250-01 (SAT) in 30s
-  - Runs uf250-02 (SAT) in 33s
-  - Runs uf250-010 (SAT) in 1m35s
-  - Half of uf150 + half of uuf150: 5m52s
-
-- **CDCL with VSIDS instad of DLIS (+ restarts + forgetting)**: 
-  - Runs uf250-01 (SAT) in 3s
-  - Runs uf250-02 (SAT) in 12m41s
-  - Runs uf250-010 (SAT) in 45s
-  - Half of uf150 + half of uuf150: 4m48s
-
-### References:
-
-DIMACS CNF Format:   
+DIMACS CNF Format:
 https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html
 
 DPLL, CDCL:
 https://users.aalto.fi/~tjunttil/2020-DP-AUT/notes-sat/cdcl.html
 
-Benchmark for SAT Problems:
+Benchmark Problems for SAT:
 https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html
