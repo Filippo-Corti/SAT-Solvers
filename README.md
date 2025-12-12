@@ -8,12 +8,15 @@ optimization, and artificial intelligence.
 This repository contains a minimal—but complete—pipeline for solving 
 logical consequence problems using propositional SAT solving. 
 A logical consequence problem asks whether a theory $\Gamma$ models a formula $A$:
+
 $$
 \begin{aligned}
 \Gamma \vDash A
 \end{aligned}
 $$
+
 This typically reduces to checking the **unsatisfiability** of the formula:
+
 $$
 \begin{aligned}
 F = \Gamma_1 \wedge \Gamma_2 \wedge ... \wedge \Gamma_N \wedge \lnot A
