@@ -48,10 +48,14 @@ for fname in sorted(os.listdir(DATASET_DIR)):
     print(f"→ Solver says:   {status}")
     print(f"→ Expected:      {expected_status}")
     print(f"→ Correct?       {correct}")
+
     if status == "SAT":
         assignment = solver.cnf.check(solver.v)
-        print(f"→ Assignment?    {assignment}")
         assert assignment
+        print(f"→ Assignment?    {assignment}")
+        print(f"Γ ⊭ A")
+    else:
+        print(f"Γ ⊨ A")
 
 print("\n=== SUMMARY ===")
 n = len(results)

@@ -5,7 +5,7 @@ variables that makes a propositional logic formula true.
 SAT is a central problem in computer science, with applications in automated reasoning, verification, planning, 
 optimization, and artificial intelligence. 
 
-This repository contains a minimal—but complete—pipeline for solving 
+This repository contains a minimal pipeline for solving 
 logical consequence problems using propositional SAT solving. 
 A logical consequence problem asks whether a theory $\Gamma$ models a formula $A$:
 
