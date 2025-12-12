@@ -143,15 +143,13 @@ class CDCL:
                 # We need to check if the assignment caused conflicts or forced new assignments
                 # In CDCL, there is a chance that watched literals are not correct due to backjumping
                 # We should always make sure 2-watched literals are correct before calling out a conflict
-                old_watched = clause.watched
-                clause.update_watched(self.v)
-                new_watched = clause.watched
-                for old_watch, new_watch in zip(old_watched, new_watched):
-                    if old_watch == new_watch: continue
+                swaps = clause.update_watched(self.v)
+                for old_watch, new_watch in swaps:
                     self.watchlist[old_watch].remove(clause_idx)
                     self.watchlist[new_watch].add(clause_idx)
 
-                tv1, tv2 = self.v[new_watched[0]], self.v[new_watched[1]]
+                w1, w2 = clause.watched
+                tv1, tv2 = self.v[w1], self.v[w2]
                 if (tv1 or tv2) or (tv1 is None and tv2 is None):
                     # Verified and undecided cases are uninteresting
                     continue
@@ -160,10 +158,10 @@ class CDCL:
                     return clause_idx
                 if tv1 is None:
                     # tv1 is None and tv2 is False. We should force first literal to True
-                    self.propagation_queue.append(PropagationQueueEntry(new_watched[0], clause_idx))
+                    self.propagation_queue.append(PropagationQueueEntry(w1, clause_idx))
                 elif tv2 is None:
                     # tv1 is None and tv2 is False. We should force first literal to True
-                    self.propagation_queue.append(PropagationQueueEntry(new_watched[1], clause_idx))
+                    self.propagation_queue.append(PropagationQueueEntry(w2, clause_idx))
 
         return Defaults.NO_CONFLICT
 

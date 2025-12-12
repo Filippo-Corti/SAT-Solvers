@@ -21,7 +21,7 @@ from sat_solvers.utils.options import HeuristicType
 # cnf = dimacs.DimacsCNF.from_ast(f4)
 
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-2_0-no-1.cnf")
-cnf = dimacs.DimacsCNF.from_file("examples/uf250/uf250-010.cnf")
+cnf = dimacs.DimacsCNF.from_file("examples/uf250/uf250-01.cnf")
 #cnf = dimacs.DimacsCNF.from_file("examples/uf250/uuf250-01.cnf")
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-50-1_6-yes1-1.cnf")
 #cnf = dimacs.DimacsCNF.from_file("examples/aim/aim-100-1_6-no-2.cnf") # The condition count == 1 is still false when we find a decision node

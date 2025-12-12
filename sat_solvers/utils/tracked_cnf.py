@@ -59,26 +59,33 @@ class TrackedClause(dimacs.Clause):
                 return None
         return False
 
-    def update_watched(self, v: PartialTruthAssignment) -> list[int]:
+    def update_watched(self, v: PartialTruthAssignment) -> list[tuple[int, int]]:
         """
         It looks for new literals to watch.
 
         :param v: The current partial assignment
-        :return: The new watched literals
+        :return: The pairs of old and new watched literals
         """
-        if self.check(v): return list()
+        w1, w2 = self.watched
+        tv1, tv2 = v[w1], v[w2]
+        if tv1 or tv2:
+            return list()
 
         literals = list()
         for l in self.literals:
-            if l in self.watched or v[l] == False:
+            tv_new = v[l]
+            if l in self.watched or tv_new == False:
                 continue
-            w1, w2 = self.watched
-            if v[w1] == False:
+            if tv1 == False:
                 self.watched = (l, w2)
-                literals.append(l)
-            elif v[w2] == False:
+                literals.append((w1, l))
+                w1, tv1 = l, tv_new
+            elif tv2 == False:
                 self.watched = (w1, l)
-                literals.append(l)
+                literals.append((w2, l))
+                w2, tv2 = l, tv_new
+            else:
+                return literals
         return literals
 
 
