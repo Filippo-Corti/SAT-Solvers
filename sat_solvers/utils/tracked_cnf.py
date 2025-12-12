@@ -23,7 +23,7 @@ class TrackedClause(dimacs.Clause):
                     self.watched = tuple(watchable)
                     return
 
-        assert watchable, "There are not enough watchable literals to satisfying the clause."
+        assert watchable, f"There are not enough watchable literals to satisfy the clause clause {self.literals}"
         self.watched = (watchable[0], self.literals[0] if self.literals[0] != watchable[0] else self.literals[1])
 
     def check(self, v: PartialTruthAssignment) -> bool | None:

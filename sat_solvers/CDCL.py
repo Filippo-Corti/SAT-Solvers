@@ -60,7 +60,7 @@ class CDCL:
         assert ok, "A conflict was found just by looking at one-literal clauses"
         self.cnf = TrackedCNF(
             clauses=[
-                TrackedClause(literals=clause.literals, true_literals=[l for l, _ in list(self.propagation_queue)])
+                TrackedClause(literals=clause.literals, true_literals=[e.literal for e in list(self.propagation_queue)])
                 for clause in cnf
                 if len(clause) >= 2
             ],
