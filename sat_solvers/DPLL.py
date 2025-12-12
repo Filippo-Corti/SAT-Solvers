@@ -1,7 +1,14 @@
 from collections import defaultdict, deque
 
 from representation import dimacs
-from sat_solvers.utils import PartialTruthAssignment, TrackedClause, TrackedCNF
+from .heuristics import DLIS
+from .utils import (
+    PartialTruthAssignment,
+    TrackedClause,
+    TrackedCNF,
+    Defaults,
+    AssignmentStackEntry, PropagationQueueEntry
+)
 
 
 class DPLL:
@@ -10,26 +17,34 @@ class DPLL:
 
     The algorithm tries to find a truth assignment that validates a CNF, in order to determine
     whether the CNF is or is not satisfiable.
+
+    :ivar TrackedCNF cnf: The CNF the solver should work on.
+    :ivar PartialTruthAssignment v: The truth assignment being built by the solver.
+    :ivar int current_level: the level of depth at which the solver is currently at.
+    :ivar list[AssignmentStackEntry] assignments_stack: stack keeping track of which assignments have been made.
+    :ivar deque[PropagationQueueEntry] propagation_queue: queue keeping track of the literals on which the solver should propagate.
+    :ivar dict[int, set[int]] watchlist: for each literal, it keeps track of which clauses are watching it.
+    :ivar Heuristic heuristic: the heuristic used by the solver to decide assignments.
     """
-    cnf: TrackedCNF
-    v: PartialTruthAssignment
-    assigned_count: int
-    assignments_stack: list[tuple[int, int]] # [literal, level at which it was assigned]
-    watchlist: dict[int, set[int]]  # [literal, list of indexes of clauses that watch it]
-    current_level: int
-    propagation_queue: deque[int]  # List of literals to propagate on
+
+    SAT = True
+    UNSAT = False
 
     def __init__(self, cnf: dimacs.DimacsCNF):
         self.v = PartialTruthAssignment(cnf.n_vars)
-        self.assigned_count = 0
         self.current_level = 0
-        self.propagation_queue = deque()
-        self.assignments_stack = list()
+        self.assignments_stack: list[AssignmentStackEntry] = list()
+        self.levels = dict()
+        self.propagation_queue: deque[PropagationQueueEntry] = deque()
+        self.watchlist = defaultdict(set)
 
-        self.handle_one_literal_clauses(cnf)
+        self.heuristic = DLIS(n_vars=cnf.n_vars)
+
+        ok = self.handle_one_literal_clauses(cnf)
+        assert ok, "A conflict was found just by looking at one-literal clauses"
         self.cnf = TrackedCNF(
             clauses=[
-                TrackedClause(literals=clause.literals, true_literals=list(self.propagation_queue))
+                TrackedClause(literals=clause.literals, true_literals=[e.literal for e in list(self.propagation_queue)])
                 for clause in cnf
                 if len(clause) >= 2
             ],
@@ -45,9 +60,11 @@ class DPLL:
         """
         state = self.propagate()
         if not state:
-            return False  # Dead-end
-        if self.assigned_count == self.cnf.n_vars:
-            return True  # Complete assignment (after propagation, which guarantees that the assignment works)
+            # Dead-end
+            return False
+        if self.v.is_total():
+            # Complete assignment (after propagation, which guarantees that the assignment works)
+            return True
 
         return self.split()
 
@@ -59,25 +76,38 @@ class DPLL:
         :return: False if the propagation reaches a dead-end. True otherwise.
         """
         while self.propagation_queue:
-            literal = self.propagation_queue.popleft()
-            current_tv = self.v[literal]
-            if current_tv == False: return False  # Conflict
-            if current_tv: continue
-            self.assign(literal, True)
-            for clause_idx in list(self.watchlist[-literal]):
+            entry = self.propagation_queue.popleft()
+            current_tv = self.v[entry.literal]
+
+            if current_tv == False:
+                # We are trying to re-assign a literal. This suggests there's a conflict
+                return False
+            if current_tv:
+                # The literal was already assigned to this value. We do not need to propagate again.
+                continue
+
+            # We should assign the literal, then propagate looking at the watchlist
+            self.assign(entry.literal, True, entry.reason_clause_idx)
+            for clause_idx in list(self.watchlist[-entry.literal]):
                 clause = self.cnf[clause_idx]
+
+                # We need to check if the assignment caused conflicts or forced new assignments
+                # We can rely on the 2-watched literal mechanism, avoiding a full check of the clause
                 verified = clause.check(self.v)
-                if verified: continue
-                if verified == False: return False
-                new_literals = clause.update_watched(self.v)
-                if not new_literals:  # 2-Watched are [False, None]
+                if verified:
+                    continue
+                if verified == False:
+                    return False
+                swaps = clause.update_watched(self.v)
+                if not swaps:  # 2-Watched are [False, None]
                     none_literal = clause.watched[0] if self.v[clause.watched[0]] is None else clause.watched[1]
-                    self.propagation_queue.append(none_literal)
+                    self.propagation_queue.append(PropagationQueueEntry(none_literal, clause_idx))
                 else:
                     # In DPLL, we can always assume that we will not have to change more than one watched at a time
-                    self.watchlist[-literal].remove(clause_idx)
-                    self.watchlist[new_literals[0]].add(clause_idx)
-        return True
+                    old_watch, new_watch = swaps[0]
+                    self.watchlist[old_watch].remove(clause_idx)
+                    self.watchlist[new_watch].add(clause_idx)
+        return Defaults.NO_CONFLICT
 
     def split(self) -> bool:
         """
@@ -85,16 +115,16 @@ class DPLL:
 
         :return: True if a satisfying assignment was found.
         """
-        splitting_literal = self.choose_splitting_literal()
+        decision = self.heuristic.pick_literal(self)
 
         self.current_level += 1
-        self.propagation_queue.append(splitting_literal)
+        self.propagation_queue.append(PropagationQueueEntry(decision, Defaults.DECISION_CLAUSE_REASON))
         if self.solve():
             return True
         self.backtrack()
 
         self.current_level += 1
-        self.propagation_queue.append(-splitting_literal)
+        self.propagation_queue.append(PropagationQueueEntry(-decision, Defaults.DECISION_CLAUSE_REASON))
         if self.solve():
             return True
         self.backtrack()
@@ -103,70 +133,49 @@ class DPLL:
 
     def backtrack(self):
         """
-        Jumps back from all the considerations and assignments made while exploring the dead-ending branch.
+        Jumps back from all the considerations and assignments made at any level below target_level.
+        It also clears the propagation queue
         """
         self.current_level -= 1
-        while self.assignments_stack and self.assignments_stack[-1][1] > self.current_level:
+        while self.assignments_stack and self.assignments_stack[-1].level > self.current_level:
             head = self.assignments_stack.pop()
-            self.unassign(head[0])
+            self.unassign(head.literal)
 
         self.propagation_queue.clear()
 
-    def assign(self, literal: int, tv: bool) -> bool:
+    def assign(self, literal: int, tv: bool, reason_clause_idx: int = -1):
         self.v[literal] = tv
-        self.assignments_stack.append((literal, self.current_level))
-        self.assigned_count += 1
-        return True
+        self.assignments_stack.append(AssignmentStackEntry(literal, self.current_level, reason_clause_idx))
+        self.heuristic.on_assign(abs(literal), literal >= 0)
 
     def unassign(self, literal: int):
         self.v[literal] = None
-        self.assigned_count -= 1
 
-    def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF):
+    def handle_one_literal_clauses(self, cnf: dimacs.DimacsCNF) -> bool:
         """
         Checks if all the one-literal clauses are compatible with each other. If they are
 
         :param cnf: The input CNF
-        :return: The filtered list of clauses
+        :return: False if both a clause [p] and [-p] are present. True otherwise
         """
+        # Check for potential opposite one-literals ([p] and [-p])
         single_literals = set()
-        for clause in cnf.clauses:
-            if len(clause) != 1: continue
-            literal = clause[0]
+        for c in cnf.clauses:
+            if len(c) != 1:
+                continue
+            literal = c[0]
             if -literal in single_literals:
-                raise ValueError("CNF cannot be satisfied!")
+                return DPLL.UNSAT
             single_literals.add(literal)
+
+        # Enqueue propagation of all single literals - they are forced assignments
         for l in single_literals:
-            self.propagation_queue.append(l)
+            self.propagation_queue.append(PropagationQueueEntry(l, Defaults.GLOBAL_UNIT_CLAUSE_REASON))
+        return True
 
     def init_watchlist(self):
         """Initializes the watchlist by setting which clauses are watching which literals"""
-        self.watchlist = defaultdict(set)
-        for idx, clause in enumerate(self.cnf):
-            w1, w2 = clause.watched
+        for idx, c in enumerate(self.cnf):
+            w1, w2 = c.watched
             self.watchlist[w1].add(idx)
             self.watchlist[w2].add(idx)
-
-    def choose_splitting_literal(self) -> int:
-        """
-        Heuristic that chooses the next literal to split on.
-
-        Decision is based on DLIS (Dynamic Largest Individual Sum):
-        the literal that appears most often in unsatisfied clauses (only consider the watchlist)
-
-        :return: the next literal to split on (that is, the propositional letter and how to set it)
-        """
-        max_v = 0
-        max_literal: int | None = None
-        for i in range(self.cnf.n_vars):
-            letter = i + 1
-            if self.v[letter] is not None: continue
-            for sign in [-1, 1]:
-                literal = letter * sign
-                v = len([idx for idx in self.watchlist[literal] if not self.cnf[idx].check(self.v)])
-                if v > max_v or max_literal is None:
-                    max_v = v
-                    max_literal = literal
-
-        assert max_literal is not None, "The heuristic has not found any unassigned letter"
-        return max_literal

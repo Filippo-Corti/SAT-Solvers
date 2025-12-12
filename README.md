@@ -14,10 +14,10 @@
 - [X] Add a way to configure CDCL simply
 - [X] Test DPLL and CDCL using known datasets
 
-- [ ] Build a utility class that handles theories and formulas directly (from a file)
-- [ ] Make a python notebook that shows how the solver can be used
-- [ ] Fix DPLL, copying from CDCL
-- [ ] Build a bruteforce solver
+- [X] Build a utility class that handles theories and formulas directly (from a file)
+- [X] Make a python notebook that shows how the solver can be used
+- [X] Fix DPLL, copying from CDCL
+- [X] Build a bruteforce solver
 - [ ] Test the preprocessing pipeline using bruteforcing
 - [ ] Clean up README and we should be done
 
