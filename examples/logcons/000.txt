@@ -1,0 +1,4 @@
+rains -> umbrella
+!umbrella
+
+!rains
