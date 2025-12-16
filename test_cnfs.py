@@ -2,7 +2,7 @@ import os
 from representation import dimacs
 from sat_solvers import DPLL, CDCL, CDCLOptions, HeuristicType
 
-DATASET_DIR = "examples/uf250"
+DATASET_DIR = "examples/aim"
 
 
 # Expected times:
